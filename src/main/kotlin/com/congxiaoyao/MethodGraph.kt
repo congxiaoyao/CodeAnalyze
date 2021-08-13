@@ -1,6 +1,7 @@
 package com.congxiaoyao
 
 import com.google.gson.annotations.JsonAdapter
+import java.util.*
 
 class MethodGraph(
   private var names: List<String>,
@@ -56,38 +57,52 @@ class MethodGraph(
   }
 
   private fun visitSubNamesFrom(
-    index: Int,
+    rootIndex: Int,
     visit: Array<Boolean>,
     remainLevel: Int,
     action: (from: Int, to: Int) -> Unit = { _, _ -> }
   ) {
-    if (remainLevel <= 0) return
-    visit[index] = true
-    graph[index].forEachIndexed { i, b ->
-      if (b) {
-        action(index, i)
-        if (!visit[i]) {
-          visitSubNamesFrom(i, visit, remainLevel - 1, action)
+    var curLevel = remainLevel
+    val queue = LinkedList<Int>()
+    queue.offer(rootIndex)
+    while (queue.isNotEmpty() && curLevel > 0) {
+      val size = queue.size
+      for (i in 0 until size) {
+        val fromIndex = queue.pop()
+        visit[fromIndex] = true
+        graph[fromIndex].forEachIndexed { toIndex, b ->
+          if (b) {
+            action(fromIndex,toIndex)
+            if (!visit[toIndex]) queue.offer(toIndex)
+          }
         }
       }
+      curLevel--
     }
   }
 
   private fun visitSubNamesTo(
-    index: Int,
+    rootIndex: Int,
     visit: Array<Boolean>,
     remainLevel: Int,
     action: (from: Int, to: Int) -> Unit = { _, _ -> }
   ) {
-    if (remainLevel <= 0) return
-    visit[index] = true
-    graph.forEachIndexed { i, b ->
-      if (b[index]) {
-        action(i, index)
-        if (!visit[i]) {
-          visitSubNamesTo(i, visit, remainLevel - 1, action)
+    var curLevel = remainLevel
+    val queue = LinkedList<Int>()
+    queue.offer(rootIndex)
+    while (queue.isNotEmpty() && curLevel > 0){
+      val size = queue.size
+      for (i in 0 until size) {
+        val toIndex = queue.pop()
+        visit[toIndex] = true
+        graph.forEachIndexed { fromIndex, b ->
+          if (b[toIndex]){
+            action(fromIndex,toIndex)
+            if (!visit[fromIndex]) queue.offer(fromIndex)
+          }
         }
       }
+      curLevel--
     }
   }
 
