@@ -66,8 +66,8 @@ fun MethodBox(boxState: MethodBoxState) {
 
     boxState.selectedLabel?.apply {
       val bound = boundsWithScale
-      val offset = bound.centerRight.round() - IntOffset(scrollState.value, indicatorState.jointY)
-      LevelIndicator(indicatorState, Modifier.offset { offset.copy(x = offset.x + 8.dp.roundToPx()) })
+      val offset = bound.centerRight.round() - IntOffset(scrollState.value, 0)
+      LevelIndicator(indicatorState, Modifier.offset { offset.let { it.copy(it.x + 8.dp.roundToPx()) } })
     }
   }
 }
