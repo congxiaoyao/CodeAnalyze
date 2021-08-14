@@ -1,15 +1,15 @@
 package com.congxiaoyao.widget
 
+import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.forEachGesture
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -22,12 +22,21 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.*
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerMoveFilter
 import androidx.compose.ui.layout.*
-import androidx.compose.ui.unit.*
-import com.congxiaoyao.*
-import kotlin.collections.ArrayList
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.round
+import com.congxiaoyao.GraphMethodBoxLoader
+import com.congxiaoyao.MethodGraph
+import com.congxiaoyao.launchApplication
+import kotlinx.coroutines.delay
 import kotlin.concurrent.thread
 import kotlin.math.*
+import kotlin.properties.PropertyDelegateProvider
+import kotlin.properties.ReadWriteProperty
+import kotlin.reflect.KProperty
 
 @Composable
 fun MethodBox(boxState: MethodBoxState) {
@@ -43,7 +52,7 @@ fun MethodBox(boxState: MethodBoxState) {
       boxState,
       Modifier.fillMaxSize()
         .horizontalScroll(scrollState)
-        .handleKeyEvent(boxState, popUpState,indicatorState)
+        .handleKeyEvent(boxState, popUpState, indicatorState)
         .drawMethodCall(boxState)
         .clearSelectionWhenTapOutside(boxState, popUpState)
     ) {
@@ -53,21 +62,94 @@ fun MethodBox(boxState: MethodBoxState) {
           labelAlpha(boxState, index),
           boxState.selectIndex == index,
           onDrag = { state.offsetPosition(it) },
-          onSelect = { boxState.select(index) },
+          onSelect = {
+            val oldSelected = boxState.selectIndex
+            boxState.select(index)
+            if (oldSelected != boxState.selectIndex) {
+              indicatorState.hide()
+            }
+          },
           onRequestPopup = {
             requestPopPosition = (state.offset + it.round() + IntOffset(0, 1))
             popUpState.isVisible = true
             boxState.select(index)
           },
-          onClosePopup = { popUpState.isVisible = false }
+          onClosePopup = {
+            popUpState.isVisible = false
+            indicatorState.hide()
+          }
         )
       }
     }
 
-    boxState.selectedLabel?.apply {
-      val bound = boundsWithScale
-      val offset = bound.centerRight.round() - IntOffset(scrollState.value, 0)
-      LevelIndicator(indicatorState, Modifier.offset { offset.let { it.copy(it.x + 8.dp.roundToPx()) } })
+    AnimatedIndicator(boxState, indicatorState, scrollState)
+  }
+}
+
+@OptIn(ExperimentalAnimationApi::class)
+@Composable
+private fun AnimatedIndicator(
+  boxState: MethodBoxState,
+  indicatorState: LevelIndicatorState,
+  scrollState: ScrollState
+) {
+
+  var isMouseEnter by remember<ReadWriteProperty<Nothing?, Boolean>> {
+    object : ReadWriteProperty<Nothing?, Boolean> {
+      private var field = false
+      override fun getValue(thisRef: Nothing?, property: KProperty<*>) = field
+      override fun setValue(thisRef: Nothing?, property: KProperty<*>, value: Boolean) {
+        field = value
+      }
+    }
+  }
+
+  val showBeginTime = indicatorState.showBeginTime
+  val visible = boxState.selectedLabel != null && showBeginTime > 0
+  if (!visible) {
+    indicatorState.hide()
+  }
+
+  val alignLabel = boxState.labels.getOrNull(indicatorState.alignIndex)
+  val offset = remember(
+    indicatorState.alignIndex,
+    alignLabel?.offset,
+    alignLabel?.size
+  ) {
+    alignLabel?.let {
+      it.boundsWithScale.centerRight.round() - IntOffset(scrollState.value, 0)
+    } ?: IntOffset.Zero
+  }
+
+  val alpha by animateFloatAsState(if (visible) 1f else 0f)
+
+  if (alpha > 0) {
+    LevelIndicator(
+      indicatorState,
+      alpha,
+      { offset.let { it.copy(it.x + 8.dp.roundToPx()) } },
+      Modifier.pointerMoveFilter(onEnter = {
+        isMouseEnter = true
+        false
+      }, onExit = {
+        isMouseEnter = false
+        //重新计时
+        indicatorState.show(indicatorState.alignIndex)
+        false
+      }),
+      onSelectLevel = {
+        boxState.updateSelectLevel(it)
+        indicatorState.level = it
+        indicatorState.show(indicatorState.alignIndex)
+      }
+    )
+    if (alpha == 1f) {
+      LaunchedEffect(showBeginTime) {
+        delay(1500)
+        if (!isMouseEnter) {
+          indicatorState.hide()
+        }
+      }
     }
   }
 }
@@ -109,10 +191,12 @@ private fun Modifier.handleKeyEvent(
       } else if (it.isKeyUp(Key.DirectionUp)) {
         state.upgradeSelectLevel()
         indicatorState.level = state.selectLevel
+        indicatorState.show(state.selectIndex)
         true
       } else if (it.isKeyUp(Key.DirectionDown)) {
         state.degradeSelectLevel()
         indicatorState.level = state.selectLevel
+        indicatorState.show(state.selectIndex)
         true
       } else false
     }
@@ -421,6 +505,7 @@ class MethodBoxState {
     highlightIndexes = indexes
 
     bringLabelsToTop(indexes)
+    bringLabelToTop(selectIndex)
   }
 
   fun bringLabelToTop(index: Int) {

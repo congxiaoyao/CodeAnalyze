@@ -1,6 +1,7 @@
 package com.congxiaoyao.widget
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.MaterialTheme.colors
@@ -9,25 +10,35 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.toRect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.absoluteValue
 
 
 @Composable
-fun LevelIndicator(state: LevelIndicatorState, modifier: Modifier) {
+fun LevelIndicator(
+  state: LevelIndicatorState,
+  alpha: Float,
+  offset: Density.() -> IntOffset,
+  modifier: Modifier,
+  onSelectLevel: (Int) -> Unit
+) {
   val shape = RoundedCornerShape(50)
   val lineWidth = 1.dp
-
   Column(
-    modifier
+    Modifier
+      .offset(offset)
+      .width(12.dp)
       .layout { measurable, constraints ->
         val placeable = measurable.measure(constraints)
         val count = state.blockCount
@@ -37,8 +48,13 @@ fun LevelIndicator(state: LevelIndicatorState, modifier: Modifier) {
         layout(placeable.width, placeable.height) {
           placeable.place(0, -jointY.toInt())
         }
-      }.shadow(8.dp, shape)
-      .width(12.dp)
+      }
+      .graphicsLayer {
+        this.shadowElevation = 8.dp.toPx()
+        this.alpha = alpha
+        this.shape = shape
+      }
+      .clip(shape)
       .background(colors.background)
       .drawWithContent {
         val contentSize = size.toRect().deflate(lineWidth.toPx()).size
@@ -48,6 +64,7 @@ fun LevelIndicator(state: LevelIndicatorState, modifier: Modifier) {
         }
       }
       .clip(shape)
+      .then(modifier)
   ) {
     val count = state.blockCount
     val jointIndex = state.jointIndex
@@ -69,7 +86,7 @@ fun LevelIndicator(state: LevelIndicatorState, modifier: Modifier) {
       } else {
         STYLE_GRAY
       }
-      Block(Modifier, style)
+      Block(Modifier.clickable { onSelectLevel(curLevel) }, style)
     }
   }
 }
@@ -93,7 +110,7 @@ private const val STYLE_MIX_GREEN = 5
 private fun Block(modifier: Modifier, style: Int) {
   val green = CALL_OUT_COLOR.copy(alpha = .65f)
   val red = Color.Red.copy(alpha = .65f)
-  val gray = Color.Gray.copy(alpha = .65f)
+  val gray = Color.Gray.copy(alpha = .5f)
 
   val bg: Modifier = when (style) {
     STYLE_RED -> Modifier.background(red)
@@ -116,13 +133,16 @@ private fun Block(modifier: Modifier, style: Int) {
     layout(placeable.width, placeable.height) {
       placeable.place(0, 0)
     }
-
   }.then(bg))
 }
 
 @Stable
 class LevelIndicatorState(val minGrid: Int) {
   var level by mutableStateOf(0)
+  var showBeginTime by mutableStateOf(-1L)
+    private set
+  var alignIndex: Int = -1
+    private set
 
   val blockCount get() = (level.absoluteValue + 1).coerceAtLeast(minGrid * 2 + 1)
 
@@ -132,4 +152,13 @@ class LevelIndicatorState(val minGrid: Int) {
       level < -minGrid -> (minGrid * 2 + level).coerceAtLeast(0)
       else -> minGrid
     }
+
+  fun show(alignIndex:Int) {
+    showBeginTime = System.currentTimeMillis()
+    this.alignIndex = alignIndex
+  }
+
+  fun hide() {
+    showBeginTime = -1
+  }
 }

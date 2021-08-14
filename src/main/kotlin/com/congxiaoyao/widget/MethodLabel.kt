@@ -126,7 +126,8 @@ class MethodLabelState(name: String) {
   var offset by mutableStateOf(IntOffset(0, 0))
   var scale: Float = 1f
 
-  private var size = IntSize(0, 0)
+  var size = IntSize(0, 0)
+    private set
 
   val boundsWithScale: Rect
     get() {
